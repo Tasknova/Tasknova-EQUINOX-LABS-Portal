@@ -101,16 +101,25 @@ export async function POST(
         })
       }
     } else if (transcriptStatus === 'failed') {
+      const hasRecording = recordingUrl && recordingUrl !== 'pending' && recordingUrl !== 'failed'
+      
       await client
         .from('c2c_calls')
         .update({
           transcript_status: 'failed',
           duration: duration ?? 0,
           recording_url: recordingUrl,
-          status: 'failed',
+          status: hasRecording ? 'completed' : 'failed',
           updated_at: new Date().toISOString(),
         })
         .eq('call_id', callId)
+
+      if (hasRecording) {
+        await triggerEvaluationPipeline({
+          callId,
+          recordingUrl,
+        })
+      }
     }
 
     // Return updated call

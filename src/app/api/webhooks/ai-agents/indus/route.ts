@@ -357,29 +357,39 @@ async function handleTranscriptFailed(
   // Update AI call if exists
   const { data: aiCallRecord } = await client
     .from('ai_calls')
-    .select('call_id')
+    .select('call_id, recording_url')
     .eq('call_id', call_id)
     .single()
 
   if (aiCallRecord) {
+    const hasRecording = aiCallRecord.recording_url && aiCallRecord.recording_url !== 'pending'
     await client
       .from('ai_calls')
-      .update({ call_type: 'failed', transcript_status: 'failed', updated_at: new Date().toISOString() })
+      .update({ call_type: hasRecording ? 'unknown' : 'failed', transcript_status: 'failed', updated_at: new Date().toISOString() })
       .eq('call_id', call_id)
+
+    if (hasRecording) {
+      await triggerAiEvaluationPipeline({ callId: call_id, recordingUrl: aiCallRecord.recording_url })
+    }
   }
 
   // Update C2C call if exists
   const { data: c2cCallRecord } = await client
     .from('c2c_calls')
-    .select('call_id')
+    .select('call_id, recording_url')
     .eq('call_id', call_id)
     .single()
 
   if (c2cCallRecord) {
+    const hasRecording = c2cCallRecord.recording_url && c2cCallRecord.recording_url !== 'pending'
     await client
       .from('c2c_calls')
-      .update({ transcript_status: 'failed', status: 'failed', updated_at: new Date().toISOString() })
+      .update({ transcript_status: 'failed', status: hasRecording ? 'completed' : 'failed', updated_at: new Date().toISOString() })
       .eq('call_id', call_id)
+
+    if (hasRecording) {
+      await triggerC2CEvaluationPipeline({ callId: call_id, recordingUrl: c2cCallRecord.recording_url })
+    }
   }
 
   await logAuditEvent('transcript.failed.processed', { call_id })

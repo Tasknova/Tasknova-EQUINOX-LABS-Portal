@@ -1,18 +1,15 @@
-import { SignJWT, jwtVerify } from 'jose'
+import { SignJWT } from 'jose'
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
 import { createServerClient } from './supabase'
+import { AdminSession, verifySession } from './auth-edge'
+
+export type { AdminSession }
+export { verifySession }
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'your-secret-key-min-32-chars-long'
 )
-
-export interface AdminSession {
-  id: string
-  email: string
-  full_name: string
-  role: 'super_admin' | 'admin'
-}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10)
@@ -35,14 +32,7 @@ export async function createSession(admin: AdminSession): Promise<string> {
   return token
 }
 
-export async function verifySession(token: string): Promise<AdminSession | null> {
-  try {
-    const verified = await jwtVerify(token, JWT_SECRET)
-    return verified.payload as unknown as AdminSession
-  } catch {
-    return null
-  }
-}
+
 
 export async function getSession(): Promise<AdminSession | null> {
   const cookieStore = cookies()
