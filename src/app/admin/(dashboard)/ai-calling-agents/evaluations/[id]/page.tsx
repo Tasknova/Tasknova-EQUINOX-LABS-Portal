@@ -14,6 +14,7 @@ import {
   CheckSquare,
   Clock,
   FileText,
+  HelpCircle,
   Info,
   Layers,
   Loader2,
@@ -30,6 +31,7 @@ import {
   Target,
   TrendingUp,
   User,
+  Zap,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AICallEvaluation } from '@/types'
