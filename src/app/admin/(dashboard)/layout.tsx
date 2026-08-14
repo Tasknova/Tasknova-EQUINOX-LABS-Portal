@@ -8,8 +8,7 @@ import {
   LogOut,
   Menu,
   X,
-  Wand2,
-  PhoneCall
+  Wand2
 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
