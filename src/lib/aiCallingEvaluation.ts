@@ -27,13 +27,14 @@ interface EvaluationScores {
   agent_performance_score: number
   customer_engagement_score: number
   communication_score: number
-  qualification_score: number
+  data_capture_completeness_score: number
 }
 
 interface EvaluationAnalysis {
   call_summary: string
   customer_intent: string
-  lead_status: 'Interested' | 'Not Interested' | 'Follow-up Required' | 'Callback Requested'
+  lead_status: 'Information Collected' | 'Callback Required' | 'Not Interested' | 'No Answer' | 'Wrong Number'
+  information_captured: Record<string, string>
   meeting_datetime: string | null
   meeting_location: string | null
   main_discussion_points: string[]
@@ -49,7 +50,7 @@ interface EvaluationAnalysis {
 
 interface EvaluationPipelineContext {
   callId: string
-  recordingUrl: string
+  recordingUrl: string | null
 }
 
 function getFirstRelationRecord(value: unknown): JsonObject | null {
@@ -115,12 +116,25 @@ function normalizeAnalysis(raw: JsonObject): EvaluationAnalysis {
   const scores = isRecord(raw.scores) ? raw.scores : {}
   const agentPerformance = isRecord(raw.agent_performance) ? raw.agent_performance : {}
 
+  const rawStatus = asString(raw.lead_status)
+  let normalizedStatus: EvaluationAnalysis['lead_status'] = 'Information Collected'
+  if (rawStatus === 'Verified' || rawStatus === 'Information Collected') {
+    normalizedStatus = 'Information Collected'
+  } else if (rawStatus === 'Callback Required') {
+    normalizedStatus = 'Callback Required'
+  } else if (rawStatus === 'Not Interested') {
+    normalizedStatus = 'Not Interested'
+  } else if (rawStatus === 'Wrong Number') {
+    normalizedStatus = 'Wrong Number'
+  } else if (rawStatus === 'No Answer') {
+    normalizedStatus = 'No Answer'
+  }
+
   return {
     call_summary: asString(raw.call_summary),
     customer_intent: asString(raw.customer_intent),
-    lead_status: (['Interested', 'Not Interested', 'Follow-up Required', 'Callback Requested'].includes(raw.lead_status as string)
-      ? raw.lead_status as EvaluationAnalysis['lead_status']
-      : 'Follow-up Required'),
+    lead_status: normalizedStatus,
+    information_captured: isRecord(raw.information_captured) ? (raw.information_captured as Record<string, string>) : {},
     meeting_datetime: typeof raw.meeting_datetime === 'string' && raw.meeting_datetime.trim() ? raw.meeting_datetime.trim() : null,
     meeting_location: typeof raw.meeting_location === 'string' && raw.meeting_location.trim() ? raw.meeting_location.trim() : null,
     main_discussion_points: asStringArray(raw.main_discussion_points),
@@ -132,11 +146,12 @@ function normalizeAnalysis(raw: JsonObject): EvaluationAnalysis {
       clarity: normalizePerformanceDimension(agentPerformance.clarity),
       listening_ability: normalizePerformanceDimension(agentPerformance.listening_ability),
       question_quality: normalizePerformanceDimension(agentPerformance.question_quality),
-      objection_handling: normalizePerformanceDimension(agentPerformance.objection_handling),
+      deflection_handling: normalizePerformanceDimension(agentPerformance.deflection_handling),
       accuracy: normalizePerformanceDimension(agentPerformance.accuracy),
       conversation_flow: normalizePerformanceDimension(agentPerformance.conversation_flow),
       confidence: normalizePerformanceDimension(agentPerformance.confidence),
       closing_quality: normalizePerformanceDimension(agentPerformance.closing_quality),
+      script_and_flow_adherence: normalizePerformanceDimension(agentPerformance.script_and_flow_adherence),
     },
     what_went_well: asStringArray(raw.what_went_well),
     areas_for_improvement: asStringArray(raw.areas_for_improvement),
@@ -146,7 +161,7 @@ function normalizeAnalysis(raw: JsonObject): EvaluationAnalysis {
       agent_performance_score: clampScore(scores.agent_performance_score),
       customer_engagement_score: clampScore(scores.customer_engagement_score),
       communication_score: clampScore(scores.communication_score),
-      qualification_score: clampScore(scores.qualification_score),
+      data_capture_completeness_score: clampScore(scores.data_capture_completeness_score),
     },
     overall_feedback: asString(raw.overall_feedback),
     diarized_transcript: asString(raw.diarized_transcript),
@@ -284,20 +299,46 @@ async function analyzeTranscript(args: {
   }
 
   const prompt = [
-    'You are evaluating an AI sales/support call.',
+    'You are evaluating a lead-verification AI agent call.',
     'Return ONLY valid JSON.',
     'Score everything on a 0-100 scale.',
     'Be concise, evidence-based, and grounded in the transcript.',
+    '',
+    'CRITICAL FAILURE CAP RULE:',
+    'If any of the following occurred anywhere in the transcript, cap the overall_call_score at 40 regardless of other weighted scores, and explicitly list the failure in "areas_for_improvement":',
+    '- Agent repeated its name, "Equinox Labs," the greeting, or the reason for calling more than once.',
+    '- Agent went silent / produced no reply to a caller turn.',
+    '- Agent discussed price, sample quantities, technical parameters, or testing timelines instead of using the deflection line ("Our testing expert will guide you on this during the next call.").',
+    '- Agent ended the call without calling the correct tool and without a spoken goodbye.',
+    '- The Call Status logged does not match what actually happened in the transcript.',
     '',
     'Required JSON shape:',
     '{',
     '  "call_summary": string,',
     '  "customer_intent": string,',
-    '  "lead_status": "Interested" | "Not Interested" | "Follow-up Required" | "Callback Requested",',
+    '  "lead_status": "Information Collected" | "Callback Required" | "Not Interested" | "No Answer" | "Wrong Number", // Must match what actually happened or the tool called at the end.',
+    '  "information_captured": {',
+    '    // Extract the following exactly as said in transcript. Use "N/A" or "Not Captured" if not present.',
+    '    // Mark "Lead source or campaign name" as "N/A" if the agent never asked it.',
+    '    // Mark "Nature of business" and "Company or brand name" as "N/A" when requirement is personal use.',
+    '    "Customer full name": string,',
+    '    "Lead source or campaign name": string,',
+    '    "Testing requirement": string,',
+    '    "Product or sample name": string,',
+    '    "Business or personal requirement": string,',
+    '    "Company or brand name": string,',
+    '    "Nature of business": string,',
+    '    "City": string,',
+    '    "PIN code": string,',
+    '    "Mobile number": string,',
+    '    "Email address": string,',
+    '    "Preferred language": string,',
+    '    "Call status": string // Same as lead_status',
+    '  },',
     '  "meeting_datetime": string | null, // If the user specifies a relative date like "today" or "tomorrow", output EXACTLY the relative phrase (e.g., "Tomorrow 12:00 PM"). Do NOT output arbitrary absolute dates or ISO strings if they are not explicitly mentioned.',
     '  "meeting_location": string | null, // Address or location mentioned for the meeting, otherwise null',
     '  "main_discussion_points": string[],',
-
+    '',
     '  "call_outcome": string,',
     '  "agent_performance": {',
     '    "greeting_quality": {"score": number, "feedback": string},',
@@ -306,11 +347,12 @@ async function analyzeTranscript(args: {
     '    "clarity": {"score": number, "feedback": string},',
     '    "listening_ability": {"score": number, "feedback": string},',
     '    "question_quality": {"score": number, "feedback": string},',
-    '    "objection_handling": {"score": number, "feedback": string},',
+    '    "deflection_handling": {"score": number, "feedback": string}, // Score whether agent used deflection line for tech/price instead of engaging',
     '    "accuracy": {"score": number, "feedback": string},',
     '    "conversation_flow": {"score": number, "feedback": string},',
     '    "confidence": {"score": number, "feedback": string},',
-    '    "closing_quality": {"score": number, "feedback": string}',
+    '    "closing_quality": {"score": number, "feedback": string}, // Score if agent gave correct close line, called correct tool, said goodbye',
+    '    "script_and_flow_adherence": {"score": number, "feedback": string} // Score if call followed expected order, 1 question per turn, no skipped/duped steps',
     '  },',
     '  "what_went_well": string[],',
     '  "areas_for_improvement": string[],',
@@ -320,7 +362,7 @@ async function analyzeTranscript(args: {
     '    "agent_performance_score": number,',
     '    "customer_engagement_score": number,',
     '    "communication_score": number,',
-    '    "qualification_score": number',
+    '    "data_capture_completeness_score": number // Score how many of the 13 fields above were correctly captured vs applicable',
     '  },',
     '  "overall_feedback": string,',
     '  "diarized_transcript": string // IMPORTANT: Output a formatted string separating speakers with newlines. E.g. "Assistant: Hello\\nUser: Hi"',
@@ -465,8 +507,8 @@ async function runEvaluationPipeline(context: EvaluationPipelineContext): Promis
 
     const formattedHistoryTranscript = formatTranscriptFromHistory(history)
 
-    // Always fetch a fresh recording URL from IndusLabs to avoid expired S3 presigned URLs (403)
-    let recordingUrl = context.recordingUrl
+    // Always try to fetch a fresh recording URL from IndusLabs to avoid expired S3 presigned URLs (403)
+    let recordingUrl: string | null = context.recordingUrl || null
     const freshUrl = await fetchFreshRecordingUrl(context.callId)
     if (freshUrl) {
       recordingUrl = freshUrl
@@ -477,14 +519,45 @@ async function runEvaluationPipeline(context: EvaluationPipelineContext): Promis
         .eq('call_id', context.callId)
     }
 
-    const whisper = await transcribeRecording(recordingUrl)
-    const rawTranscriptText = formattedHistoryTranscript || whisper.text
+    // Determine transcript source: prefer Whisper transcription from recording,
+    // but fall back to the stored transcript text if no valid recording URL is available.
+    let whisperText = ''
+    let whisperDuration: number | null = null
+    let transcriptSource = 'transcript-history'
+
+    const hasValidRecordingUrl =
+      recordingUrl &&
+      recordingUrl !== 'pending' &&
+      recordingUrl !== 'failed' &&
+      recordingUrl !== ''
+
+    if (hasValidRecordingUrl) {
+      try {
+        const whisper = await transcribeRecording(recordingUrl!)
+        whisperText = whisper.text
+        whisperDuration = whisper.duration
+        transcriptSource = 'whisper-1'
+      } catch (whisperError) {
+        console.warn(
+          `[Evaluation] Whisper transcription failed for ${context.callId}, falling back to stored transcript:`,
+          whisperError instanceof Error ? whisperError.message : whisperError
+        )
+      }
+    }
+
+    // Use the best available transcript text
+    const storedRawText = asString(transcriptRecord?.raw_text, '')
+    const rawTranscriptText = formattedHistoryTranscript || whisperText || storedRawText
+
+    if (!rawTranscriptText) {
+      throw new Error(`No transcript text available for evaluation of call ${context.callId}. Recording URL: ${recordingUrl || 'none'}, history turns: ${history.length}`)
+    }
 
     const analysis = await analyzeTranscript({
       transcriptText: rawTranscriptText,
-      rawTranscription: whisper.text,
+      rawTranscription: whisperText || rawTranscriptText,
       existingOutcome: call.outcome || asString(transcriptRecord?.call_outcome, '') || null,
-      duration: typeof call.duration === 'number' ? call.duration : whisper.duration,
+      duration: typeof call.duration === 'number' ? call.duration : whisperDuration,
       customerNumber: call.customer_number,
       agentName: asString(agentRecord?.name, '') || null,
     })
@@ -495,7 +568,7 @@ async function runEvaluationPipeline(context: EvaluationPipelineContext): Promis
         summary: analysis.call_summary,
         call_outcome: analysis.call_outcome,
         history,
-        raw_text: whisper.text,
+        raw_text: whisperText || storedRawText,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'call_id' }
@@ -514,7 +587,7 @@ async function runEvaluationPipeline(context: EvaluationPipelineContext): Promis
     await upsertEvaluationRecord(context.callId, {
       status: 'completed',
       transcript_text: finalTranscriptText,
-      transcript_source: 'whisper-1',
+      transcript_source: transcriptSource,
       analysis_json: analysis,
       call_summary: analysis.call_summary,
       customer_intent: analysis.customer_intent,
@@ -532,7 +605,8 @@ async function runEvaluationPipeline(context: EvaluationPipelineContext): Promis
       agent_performance_score: analysis.scores.agent_performance_score,
       customer_engagement_score: analysis.scores.customer_engagement_score,
       communication_score: analysis.scores.communication_score,
-      qualification_score: analysis.scores.qualification_score,
+      data_capture_completeness_score: analysis.scores.data_capture_completeness_score,
+      information_captured: analysis.information_captured,
       score: analysis.scores.overall_call_score,
       issues: analysis.areas_for_improvement,
       suggestions: analysis.next_best_actions,

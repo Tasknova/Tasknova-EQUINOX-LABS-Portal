@@ -173,11 +173,12 @@ export interface AICallEvaluation {
   transcript_source?: string | null
   call_summary?: string | null
   customer_intent?: string | null
-  lead_status?: 'Interested' | 'Not Interested' | 'Follow-up Required' | 'Callback Requested' | null
+  lead_status?: 'Information Collected' | 'Callback Required' | 'Not Interested' | 'Verified' | 'No Answer' | 'Wrong Number' | null
   meeting_datetime?: string | null
   meeting_location?: string | null
   main_discussion_points?: string[]
   call_outcome?: string | null
+  information_captured?: Record<string, string> | null
   agent_performance?: Record<string, unknown>
   strengths?: string[]
   areas_for_improvement?: string[]
@@ -189,6 +190,7 @@ export interface AICallEvaluation {
   customer_engagement_score?: number | null
   communication_score?: number | null
   qualification_score?: number | null
+  data_capture_completeness_score?: number | null
   error_message?: string | null
   processed_at?: string | null
   created_at: string

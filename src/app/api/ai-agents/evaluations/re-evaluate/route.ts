@@ -24,17 +24,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Call not found' }, { status: 404 })
       }
 
-      if (!call.recording_url || call.recording_url === 'pending') {
-        return NextResponse.json({ error: 'Call has no recording URL' }, { status: 400 })
-      }
+      // Check if we have at least some data to evaluate with (recording OR transcript)
+      const hasRecording = call.recording_url && call.recording_url !== 'pending' && call.recording_url !== 'failed'
+      const hasTranscript = call.transcript_status === 'completed'
 
-      if (call.transcript_status !== 'completed') {
-        return NextResponse.json({ error: 'Transcript is not ready yet' }, { status: 400 })
+      if (!hasRecording && !hasTranscript) {
+        return NextResponse.json(
+          { error: 'Call has neither a recording URL nor a completed transcript yet' },
+          { status: 400 }
+        )
       }
 
       await triggerEvaluationPipeline({
         callId: call.call_id,
-        recordingUrl: call.recording_url,
+        recordingUrl: hasRecording ? call.recording_url : null,
       })
 
       await logAuditEvent('evaluation.retriggered', { call_id: callId })
@@ -45,10 +48,10 @@ export async function POST(req: NextRequest) {
     if (all) {
       const { data: calls, error } = await client
         .from('ai_calls')
-        .select('call_id, recording_url')
-        .eq('transcript_status', 'completed')
-        .not('recording_url', 'is', null)
+        .select('call_id, recording_url, transcript_status')
+        .or('transcript_status.eq.completed,recording_url.not.is.null')
         .neq('recording_url', 'pending')
+        .neq('recording_url', 'failed')
 
       if (error) {
         return NextResponse.json({ error: 'Failed to fetch calls' }, { status: 500 })
@@ -56,7 +59,9 @@ export async function POST(req: NextRequest) {
 
       const results = []
       for (const call of calls || []) {
-        if (!call.recording_url) continue
+        const hasRecording = call.recording_url && call.recording_url !== 'pending' && call.recording_url !== 'failed'
+        const hasTranscript = call.transcript_status === 'completed'
+        if (!hasRecording && !hasTranscript) continue
 
         const { data: existing } = await client
           .from('ai_evaluations')
@@ -64,11 +69,11 @@ export async function POST(req: NextRequest) {
           .eq('call_id', call.call_id)
           .maybeSingle()
 
-      if (existing?.status === 'completed') continue
+        if (existing?.status === 'completed') continue
 
         await triggerEvaluationPipeline({
           callId: call.call_id,
-          recordingUrl: call.recording_url,
+          recordingUrl: hasRecording ? call.recording_url : null,
         })
 
         results.push(call.call_id)

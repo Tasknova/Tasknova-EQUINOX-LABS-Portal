@@ -251,9 +251,8 @@ async function handleTranscriptReady(
       { onConflict: 'call_id' }
     )
 
-    if (recording_url) {
-      await triggerAiEvaluationPipeline({ callId: call_id, recordingUrl: recording_url })
-    }
+    // Trigger evaluation: works with recording URL or transcript-only
+    await triggerAiEvaluationPipeline({ callId: call_id, recordingUrl: recording_url ?? null })
   }
 
   // --- Handle C2C calls ---

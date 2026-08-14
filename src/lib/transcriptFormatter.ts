@@ -35,14 +35,13 @@
  */
 
 export interface FormattedTurn {
-  speaker: number   // 0 or 1
+  speaker: number   // 0 = Assistant / Speaker 0, 1 = User / Speaker 1
+  speakerLabel?: string // e.g. 'Assistant', 'User', 'Agent', 'Priya', etc.
   lines: string[]   // one or more utterance lines belonging to this turn
 }
 
 // ---------------------------------------------------------------------------
 // Response-trigger patterns — case-insensitive, matched at line START
-// When a line starts with one of these it almost always signals the OTHER
-// speaker has started talking (they are responding to the previous utterance).
 // ---------------------------------------------------------------------------
 const RESPONSE_TRIGGERS: RegExp[] = [
   /^yes\b/i,
@@ -86,83 +85,70 @@ function isQuestion(line: string): boolean {
   return line.trimEnd().endsWith('?')
 }
 
-// ---------------------------------------------------------------------------
-// STEP 1: Pre-process and split transcript text into individual utterances
-// ---------------------------------------------------------------------------
+function isAssistantRole(name: string): boolean {
+  const n = name.toLowerCase().replace(/[\s_-]+/g, '')
+  return (
+    n.includes('assistant') ||
+    n.includes('agent') ||
+    n.includes('priya') ||
+    n.includes('ai') ||
+    n.includes('bot') ||
+    n.includes('system') ||
+    n === 'speaker0' ||
+    n === 'spk0'
+  )
+}
 
-/**
- * Strips synthetic "Role: content" prefixes that may have been injected by
- * the API fallback path (e.g. "Conversation: Hello? Yes...").
- * The original stored text is never touched — this operates on a copy.
- */
-function stripRolePrefixes(text: string): string {
-  // If the entire text is prefixed with "SomeRole: ...", strip the prefix.
-  // This covers synthetic entries like "Conversation: <raw_text>" that are
-  // created when history is empty but raw_text exists.
-  return text.replace(/^[A-Za-z0-9 _]+:\s+/i, '').trim()
+function normalizeRoleLabel(name: string): string {
+  const isAssoc = isAssistantRole(name)
+  if (isAssoc) return 'Assistant'
+  const n = name.toLowerCase().replace(/[\s_-]+/g, '')
+  if (n.includes('user') || n.includes('customer') || n.includes('caller') || n.includes('human') || n.includes('lead') || n === 'speaker1' || n === 'spk1') {
+    return 'User'
+  }
+  return name.trim().charAt(0).toUpperCase() + name.trim().slice(1)
 }
 
 /**
- * Detects whether the transcript is newline-separated (one utterance per line)
- * or a single paragraph (typical Whisper output with space-separated sentences).
- *
- * If there are at least 2 non-empty lines we treat it as newline-separated.
- * Otherwise we fall through to sentence splitting.
+ * Preprocesses transcript text to ensure inline speaker prefixes (e.g. "User:", "Agent:", "Assistant:")
+ * that might appear without newlines in single-paragraph transcripts get separated onto their own lines.
  */
-function splitIntoLines(transcriptText: string): string[] {
-  // Try newline split first
-  const newlineLines = transcriptText
+function normalizeAndSplitSpeakerLines(text: string): string[] {
+  let normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+
+  // Match inline speaker tags anywhere in the string
+  // e.g. "food testing services. User: Yes. Agent: Is now a good time"
+  const inlineSpeakerRegex = /(?:^|[\s\.\?!]+)((?:Assistant|Agent|Priya|AI|Bot|System|User|Customer|Caller|Receiver|Lead|Human|Speaker\s*[0-9A-Za-z]+)\s*:)\s*/gi
+
+  normalized = normalized.replace(inlineSpeakerRegex, (match, prefix, offset) => {
+    const trimmedPrefix = prefix.trim()
+    if (offset === 0) {
+      return `${trimmedPrefix} `
+    }
+    return `\n${trimmedPrefix} `
+  })
+
+  return normalized
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
+}
 
-  if (newlineLines.length >= 2) {
-    // Already has meaningful newline structure — use as-is
-    return newlineLines
-  }
-
-  // Single paragraph (or just one newline-delimited line): split by sentence
-  // boundaries. We split after . ? ! followed by whitespace OR end-of-string.
-  // We keep the punctuation attached to the preceding sentence.
+function splitIntoSentences(text: string): string[] {
   const sentenceRegex = /[^.!?]+[.!?]+(?:\s|$)/g
   const sentences: string[] = []
   let match: RegExpExecArray | null
 
-  while ((match = sentenceRegex.exec(transcriptText)) !== null) {
+  while ((match = sentenceRegex.exec(text)) !== null) {
     const s = match[0].trim()
     if (s) sentences.push(s)
   }
 
-  // If the regex produced useful splits, use them
   if (sentences.length >= 2) return sentences
-
-  // Ultimate fallback: return the raw text as a single line
-  // (the UI will still show it, just without speaker labels)
-  const raw = transcriptText.trim()
+  const raw = text.trim()
   return raw ? [raw] : []
 }
 
-// ---------------------------------------------------------------------------
-// STEP 2: Assign speakers — deterministic heuristic
-// ---------------------------------------------------------------------------
-
-/**
- * Core speaker-assignment algorithm.
- *
- * Rules applied per utterance line:
- * 1.  The very first line always belongs to Speaker 0.
- * 2.  A line triggers a speaker SWITCH when:
- *     a. The PREVIOUS line ended with '?' (question invites a response), OR
- *     b. The current line starts with a response-trigger word.
- * 3.  Otherwise the line is grouped with the CURRENT speaker (continuation).
- *
- * This produces stable, deterministic output for any given transcript text.
- *
- * NOTE: The algorithm never forces strict alternation. Two consecutive lines
- * that both lack response triggers and where the previous didn't ask a
- * question are assigned to the SAME speaker (continuation), correctly
- * representing a speaker who says multiple sentences in a row.
- */
 function assignSpeakers(lines: string[]): FormattedTurn[] {
   if (lines.length === 0) return []
 
@@ -180,81 +166,83 @@ function assignSpeakers(lines: string[]): FormattedTurn[] {
     const shouldSwitch = prevWasQuestion || currentIsResponse
 
     if (shouldSwitch) {
-      // Flush accumulated lines for the current speaker as one completed turn
-      turns.push({ speaker: currentSpeaker, lines: [...currentLines] })
-      // Flip speaker
+      turns.push({
+        speaker: currentSpeaker,
+        speakerLabel: currentSpeaker === 0 ? 'Assistant' : 'User',
+        lines: [...currentLines],
+      })
       currentSpeaker = currentSpeaker === 0 ? 1 : 0
       currentLines = [line]
     } else {
-      // Same speaker continues — append to the current turn
       currentLines.push(line)
     }
   }
 
-  // Flush the final turn
   if (currentLines.length > 0) {
-    turns.push({ speaker: currentSpeaker, lines: [...currentLines] })
+    turns.push({
+      speaker: currentSpeaker,
+      speakerLabel: currentSpeaker === 0 ? 'Assistant' : 'User',
+      lines: [...currentLines],
+    })
   }
 
   return turns
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
 export function formatTranscriptIntoTurns(
   transcriptText: string | null | undefined,
 ): FormattedTurn[] {
   if (!transcriptText || !transcriptText.trim()) return []
-  
-  const rawLines = transcriptText.split('\n').map(l => l.trim()).filter(Boolean)
-  
-  // Check if it's already explicitly diarized (e.g. "Assistant: Hello" and "User: Hi")
-  // We check if at least half the lines have a prefix
-  const prefixRegex = /^([A-Za-z0-9 _]+):\s+(.*)$/i
-  let prefixedCount = 0
-  
-  for (const line of rawLines) {
-    if (prefixRegex.test(line)) prefixedCount++
-  }
-  
-  if (rawLines.length > 0 && prefixedCount >= rawLines.length / 2) {
-    // Explicitly diarized!
+
+  const lines = normalizeAndSplitSpeakerLines(transcriptText)
+  if (lines.length === 0) return []
+
+  const prefixRegex = /^([A-Za-z0-9 _]{1,30}):\s+(.*)$/i
+  const hasPrefixes = lines.some((l) => prefixRegex.test(l))
+
+  if (hasPrefixes) {
     const turns: FormattedTurn[] = []
-    let currentSpeakerIndex = 0
-    const speakerMap = new Map<string, number>()
-    
-    for (const line of rawLines) {
+
+    for (const line of lines) {
       const match = prefixRegex.exec(line)
       if (match) {
-        const name = match[1].toLowerCase()
-        const content = match[2]
-        
-        if (!speakerMap.has(name)) {
-          speakerMap.set(name, speakerMap.size)
-        }
-        
-        const spkIdx = speakerMap.get(name)!
-        
-        if (spkIdx !== currentSpeakerIndex || turns.length === 0) {
-          currentSpeakerIndex = spkIdx
-          turns.push({ speaker: spkIdx, lines: [content] })
+        const rawSpeakerName = match[1].trim()
+        const content = match[2].trim()
+        const isAssistant = isAssistantRole(rawSpeakerName)
+        const speaker = isAssistant ? 0 : 1
+        const speakerLabel = normalizeRoleLabel(rawSpeakerName)
+
+        const lastTurn = turns[turns.length - 1]
+        if (lastTurn && lastTurn.speaker === speaker && lastTurn.speakerLabel === speakerLabel) {
+          lastTurn.lines.push(content)
         } else {
-          turns[turns.length - 1].lines.push(content)
+          turns.push({
+            speaker,
+            speakerLabel,
+            lines: [content],
+          })
         }
       } else {
-        // Line without prefix, just append to current turn
-        if (turns.length > 0) turns[turns.length - 1].lines.push(line)
-        else turns.push({ speaker: 0, lines: [line] })
+        // Continuation line without a prefix
+        if (turns.length > 0) {
+          turns[turns.length - 1].lines.push(line)
+        } else {
+          turns.push({
+            speaker: 0,
+            speakerLabel: 'Assistant',
+            lines: [line],
+          })
+        }
       }
     }
-    return turns
+
+    if (turns.length > 0) {
+      return turns
+    }
   }
 
-  // Fallback to legacy formatting logic
-  const cleaned = stripRolePrefixes(transcriptText)
-  const lines = splitIntoLines(cleaned)
-  if (lines.length === 0) return []
-  return assignSpeakers(lines)
+  // Fallback: heuristic segmentation for unlabeled text
+  const sentenceLines = lines.length >= 2 ? lines : splitIntoSentences(transcriptText)
+  return assignSpeakers(sentenceLines)
 }
+

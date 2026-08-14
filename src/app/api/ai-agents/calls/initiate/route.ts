@@ -374,10 +374,10 @@ async function pollTranscriptInBackground(
             })
             .eq('call_id', call_id)
 
-          if (recordingUrl) {
+          if (recordingUrl || history.length > 0) {
             await triggerEvaluationPipeline({
               callId: call_id,
-              recordingUrl,
+              recordingUrl: recordingUrl ?? null,
             })
           }
 

@@ -428,5 +428,5 @@ export const SHRIRAM_PFA_DEFAULT_DID = SHRIRAM_PFA_DIDS[0].value
 export function isShriramPFAAgent(agentName: string | null | undefined): boolean {
   if (!agentName) return false
   const normalized = agentName.toLowerCase().replace(/[\s_-]+/g, '')
-  return (normalized.includes('shriram') || normalized.includes('sriram')) && normalized.includes('pfa')
+  return normalized.includes('equinox') && normalized.includes('labs')
 }

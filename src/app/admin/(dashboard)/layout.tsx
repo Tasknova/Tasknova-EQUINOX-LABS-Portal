@@ -9,7 +9,6 @@ import {
   Menu,
   X,
   Wand2,
-  PhoneCall
 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
@@ -17,7 +16,6 @@ import toast from 'react-hot-toast'
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
   { name: 'AI Calling Agents', href: '/admin/ai-calling-agents', icon: Wand2 },
-  { name: 'C2C Calling', href: '/admin/c2c-calling', icon: PhoneCall },
   { name: 'Admins', href: '/admin/admins', icon: Shield },
 ]
 

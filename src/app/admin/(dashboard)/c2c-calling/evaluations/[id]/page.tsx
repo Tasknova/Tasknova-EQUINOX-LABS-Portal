@@ -651,14 +651,34 @@ function TranscriptTab({
     if (formattedTurns.length > 0) {
       return (
         <div className="rounded-xl border border-gray-200 bg-white p-6 max-h-[600px] overflow-y-auto">
-          <div className="space-y-4">
+          <div className="space-y-3">
             {formattedTurns.map((turn, idx) => {
               const isSpk0 = turn.speaker === 0
-              const label = isSpk0 ? 'Caller' : 'Receiver'
+              const label = turn.speakerLabel || (isSpk0 ? 'Caller' : 'Receiver')
               return (
-                <p key={idx} className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
-                  <span className="font-semibold text-gray-900">{label}:</span> {turn.lines.join(' ')}
-                </p>
+                <div
+                  key={idx}
+                  className={`rounded-xl p-3.5 border transition-all ${
+                    isSpk0
+                      ? 'bg-purple-50/60 border-purple-100 text-purple-950'
+                      : 'bg-blue-50/60 border-blue-100 text-blue-950'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                        isSpk0
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+                    {turn.lines.join(' ')}
+                  </p>
+                </div>
               )
             })}
           </div>
