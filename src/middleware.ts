@@ -24,14 +24,19 @@ export async function middleware(request: NextRequest) {
   // Protected admin paths
   if (path.startsWith('/admin')) {
     const token = request.cookies.get('admin_session')?.value
+    console.log('[Middleware] Checking path:', path)
+    console.log('[Middleware] Token present:', !!token)
 
     if (!token) {
+      console.log('[Middleware] No token found, redirecting to login')
       return NextResponse.redirect(new URL('/admin/login', request.url))
     }
 
     const session = await verifySession(token)
+    console.log('[Middleware] Session verified:', !!session)
 
     if (!session) {
+      console.log('[Middleware] Invalid session, clearing cookie and redirecting')
       const response = NextResponse.redirect(new URL('/admin/login', request.url))
       response.cookies.delete('admin_session')
       return response

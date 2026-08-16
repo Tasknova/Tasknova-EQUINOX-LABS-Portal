@@ -15,7 +15,8 @@ export async function verifySession(token: string): Promise<AdminSession | null>
   try {
     const verified = await jwtVerify(token, JWT_SECRET)
     return verified.payload as unknown as AdminSession
-  } catch {
+  } catch (err) {
+    console.error('Session verification failed:', err)
     return null
   }
 }
