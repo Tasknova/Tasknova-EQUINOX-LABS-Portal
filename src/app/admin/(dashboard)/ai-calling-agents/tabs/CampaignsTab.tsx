@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { ChevronRight, Play, Plus, Upload, X, AlertCircle, CheckCircle, Clock, XCircle, Loader2 } from 'lucide-react'
+import { ChevronRight, Play, Plus, Upload, X, AlertCircle, CheckCircle, Clock, XCircle, Loader2, Download } from 'lucide-react'
 import { SHRIRAM_PFA_DIDS, isShriramPFAAgent } from '@/lib/aiAgentsUtils'
 import Link from 'next/link'
 
@@ -329,7 +329,17 @@ function NewCampaignModal({
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Start New Campaign</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 transition"><X className="w-5 h-5 text-gray-500" /></button>
+          <div className="flex items-center gap-3">
+            <a 
+              href="/demo_csv.csv" 
+              download 
+              className="flex items-center gap-1.5 text-sm text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-md transition"
+            >
+              <Download className="w-4 h-4" />
+              Download Demo CSV
+            </a>
+            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 transition"><X className="w-5 h-5 text-gray-500" /></button>
+          </div>
         </div>
 
         <div className="space-y-4">
