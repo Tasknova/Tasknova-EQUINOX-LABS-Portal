@@ -1,13 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { LogIn, Eye, EyeOff } from 'lucide-react'
 import Image from 'next/image'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -32,8 +30,10 @@ export default function LoginPage() {
       }
 
       toast.success('Login successful!')
-      router.push('/admin/dashboard')
-      router.refresh()
+      // Use a hard redirect so the browser commits the session cookie
+      // before the middleware runs its auth check. router.push can race
+      // against Set-Cookie in production on Vercel Edge.
+      window.location.href = '/admin/dashboard'
     } catch { // eslint-disable-next-line @typescript-eslint/no-unused-vars
       toast.error('An error occurred')
     } finally {
@@ -55,9 +55,9 @@ export default function LoginPage() {
           />
         </div>
 
-        <h1 className="text-3xl font-bold text-center mb-2 text-gray-900">Shriram PFA portal</h1>
+        <h1 className="text-3xl font-bold text-center mb-2 text-gray-900">EQUINOX LABS portal</h1>
         <p className="text-gray-600 text-center mb-8">
-          Sign in to access the Shriram PFA portal
+          Sign in to access the EQUINOX LABS portal
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-5">
