@@ -169,20 +169,29 @@ function normalizeAnalysis(raw: JsonObject): EvaluationAnalysis {
 }
 
 function getRecordingFileName(recordingUrl: string, contentType: string | null): string {
+  let filename = 'recording.mp3'
   try {
     const url = new URL(recordingUrl)
     const lastSegment = url.pathname.split('/').filter(Boolean).pop()
     if (lastSegment) {
-      return lastSegment
+      filename = lastSegment
     }
   } catch {
     // Fall back to content type below.
   }
 
-  if (contentType?.includes('wav')) return 'recording.wav'
-  if (contentType?.includes('mpeg')) return 'recording.mp3'
-  if (contentType?.includes('mp4')) return 'recording.mp4'
-  return 'recording.audio'
+  const supportedExtensions = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm']
+  const hasSupportedExtension = supportedExtensions.some(ext => filename.toLowerCase().endsWith('.' + ext))
+
+  if (!hasSupportedExtension) {
+    if (contentType?.includes('wav')) return `${filename}.wav`
+    if (contentType?.includes('mpeg') || contentType?.includes('mp3')) return `${filename}.mp3`
+    if (contentType?.includes('mp4') || contentType?.includes('m4a')) return `${filename}.m4a`
+    if (contentType?.includes('ogg')) return `${filename}.ogg`
+    return `${filename}.mp3` // fallback
+  }
+
+  return filename
 }
 
 function formatTranscriptFromHistory(history: unknown): string {
