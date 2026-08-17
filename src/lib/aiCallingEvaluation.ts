@@ -550,7 +550,74 @@ async function runEvaluationPipeline(context: EvaluationPipelineContext): Promis
     const rawTranscriptText = formattedHistoryTranscript || whisperText || storedRawText
 
     if (!rawTranscriptText) {
-      throw new Error(`No transcript text available for evaluation of call ${context.callId}. Recording URL: ${recordingUrl || 'none'}, history turns: ${history.length}`)
+      // Graceful fallback for empty calls (no speech or immediately disconnected)
+      const emptyAnalysis = {
+        call_summary: 'No transcript or audio was recorded for this call (0 turns). The call likely did not connect or was disconnected immediately.',
+        customer_intent: 'Unknown',
+        lead_status: 'Not Interested',
+        meeting_datetime: null,
+        meeting_location: null,
+        main_discussion_points: ['No discussion took place.'],
+        call_outcome: 'Call Did Not Connect',
+        agent_performance: {
+          accuracy: 'N/A',
+          conversation_flow: 'N/A',
+          confidence: 'N/A',
+          closing_quality: 'N/A',
+          script_and_flow_adherence: 'N/A',
+        },
+        what_went_well: [],
+        areas_for_improvement: ['Call failed to connect or customer dropped immediately.'],
+        next_best_actions: ['Retry call later'],
+        scores: {
+          overall_call_score: 0,
+          agent_performance_score: 0,
+          customer_engagement_score: 0,
+          communication_score: 0,
+          data_capture_completeness_score: 0,
+        },
+        overall_feedback: 'No evaluation possible due to empty transcript.',
+        diarized_transcript: '*(No conversation recorded)*',
+        information_captured: [],
+      }
+
+      await upsertEvaluationRecord(context.callId, {
+        status: 'completed',
+        transcript_text: '*(No conversation recorded)*',
+        transcript_source: transcriptSource,
+        analysis_json: emptyAnalysis,
+        call_summary: emptyAnalysis.call_summary,
+        customer_intent: emptyAnalysis.customer_intent,
+        lead_status: emptyAnalysis.lead_status,
+        meeting_datetime: emptyAnalysis.meeting_datetime,
+        meeting_location: emptyAnalysis.meeting_location,
+        main_discussion_points: emptyAnalysis.main_discussion_points,
+        call_outcome: emptyAnalysis.call_outcome,
+        agent_performance: emptyAnalysis.agent_performance,
+        strengths: emptyAnalysis.what_went_well,
+        areas_for_improvement: emptyAnalysis.areas_for_improvement,
+        next_best_actions: emptyAnalysis.next_best_actions,
+        overall_feedback: emptyAnalysis.overall_feedback,
+        overall_score: emptyAnalysis.scores.overall_call_score,
+        agent_performance_score: emptyAnalysis.scores.agent_performance_score,
+        customer_engagement_score: emptyAnalysis.scores.customer_engagement_score,
+        communication_score: emptyAnalysis.scores.communication_score,
+        data_capture_completeness_score: emptyAnalysis.scores.data_capture_completeness_score,
+        information_captured: emptyAnalysis.information_captured,
+        score: emptyAnalysis.scores.overall_call_score,
+        issues: emptyAnalysis.areas_for_improvement,
+        suggestions: emptyAnalysis.next_best_actions,
+        error_message: null,
+        processed_at: new Date().toISOString(),
+      })
+
+      await logAuditEvent('call.evaluation.completed', {
+        call_id: context.callId,
+        overall_score: 0,
+        note: 'Empty transcript',
+      })
+
+      return
     }
 
     const analysis = await analyzeTranscript({

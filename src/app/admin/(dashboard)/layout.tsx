@@ -8,7 +8,8 @@ import {
   LogOut,
   Menu,
   X,
-  Wand2
+  Wand2,
+  Upload
 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
@@ -16,6 +17,7 @@ import toast from 'react-hot-toast'
 const navigation = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
   { name: 'AI Calling Agents', href: '/admin/ai-calling-agents', icon: Wand2 },
+  { name: 'Uploads', href: '/admin/uploads', icon: Upload },
   { name: 'Admins', href: '/admin/admins', icon: Shield },
 ]
 
