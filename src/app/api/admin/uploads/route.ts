@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       await client.from('ai_agents').insert({
         agent_id: 'MANUAL_UPLOAD',
         name: 'Manual Upload',
-        system_prompt: 'N/A',
+        agent_type: 'generic',
         status: 'active'
       })
     }
