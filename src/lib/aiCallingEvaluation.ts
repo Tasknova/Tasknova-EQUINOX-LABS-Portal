@@ -254,13 +254,15 @@ async function transcribeRecording(recordingUrl: string): Promise<WhisperTranscr
 
   const audioBuffer = await recordingResponse.arrayBuffer()
   const contentType = recordingResponse.headers.get('content-type')
+  const recordingFilename = getRecordingFileName(recordingUrl, contentType)
+  console.log(`[Whisper] Sending file: ${recordingFilename}, content-type: ${contentType}, size: ${audioBuffer.byteLength} bytes`)
   const formData = new FormData()
   formData.append('model', 'whisper-1')
   formData.append('response_format', 'verbose_json')
   formData.append(
     'file',
     new Blob([audioBuffer], { type: contentType || 'application/octet-stream' }),
-    getRecordingFileName(recordingUrl, contentType)
+    recordingFilename
   )
 
   const transcriptResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {

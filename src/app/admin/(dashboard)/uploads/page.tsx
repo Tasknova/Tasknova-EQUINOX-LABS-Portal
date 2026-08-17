@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Upload, FileAudio, CheckCircle, Loader2, Play, AlertCircle, ChevronRight, RefreshCw } from 'lucide-react'
+import { Upload, FileAudio, CheckCircle, Loader2, AlertCircle, ChevronRight, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 
